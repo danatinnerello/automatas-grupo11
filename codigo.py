@@ -23,12 +23,17 @@ patron_ip = re.compile(
     r'^(\d{1,3}\.){3}\d{1,3}$'
 )
 
+# CORRECCIÓN 1: Patrón MAC flexible que acepta formato estándar y sufijos (ej: :HCDD)
 patron_mac = re.compile(
-    r'^[0-9A-F]{2}(-[0-9A-F]{2}){5}:HCDD$'
+    r'^[0-9A-Fa-f]{2}(-[0-9A-Fa-f]{2}){5}(:[A-Za-z0-9]+)?$'
 )
 
 patron_fecha = re.compile(
     r'^\d{4}-\d{2}-\d{2}$'
+)
+
+patron_numero = re.compile(
+    r'^\d+$'
 )
 
 registros_validos = []
@@ -41,20 +46,31 @@ for _, fila in df.iterrows():
     usuario = str(fila["Usuario"]).strip()
     ip = str(fila["IP_NAS_AP"]).strip()
     fecha = str(fila["Inicio_de_Conexión_Dia"]).strip()
-    mac = str(fila["MAC_AP"]).strip()
+    mac_ap = str(fila["MAC_AP"]).strip()
+    mac_cliente = str(fila["MAC_Cliente"]).strip()
+    
+    # Extraemos los campos numéricos a validar
+    input_octects = str(fila["Input_Octects"]).strip()
+    output_octects = str(fila["Output_Octects"]).strip()
+    session_time = str(fila["Session_Time"]).strip()
 
     valido = True
 
     if not patron_usuario.match(usuario):
         valido = False
-
     if not patron_ip.match(ip):
         valido = False
-
     if not patron_fecha.match(fecha):
         valido = False
-
-    if not patron_mac.match(mac):
+    if not patron_mac.match(mac_ap):
+        valido = False
+    if not patron_mac.match(mac_cliente):
+        valido = False
+    if not patron_numero.match(input_octects):
+        valido = False
+    if not patron_numero.match(output_octects):
+        valido = False
+    if not patron_numero.match(session_time):
         valido = False
 
     if valido:
@@ -111,79 +127,47 @@ def buscar_usuarios():
         print("Debe ingresar un número.")
         return
 
-    fecha_inicio = input(
-        "\nFecha inicio (AAAA-MM-DD): "
-    )
+    # Filtramos primero solo por la MAC para ver su historial
+    filtrado_ap = df_validos[(df_validos["MAC_AP"] == mac_seleccionada)].copy()
+    fechas_reales = pd.to_datetime(filtrado_ap["Inicio_de_Conexión_Dia"])
+    min_fecha = fechas_reales.min().strftime('%Y-%m-%d')
+    max_fecha = fechas_reales.max().strftime('%Y-%m-%d')
 
-    fecha_fin = input(
-        "Fecha fin (AAAA-MM-DD): "
-    )
+    print(f"\n[DATO CLAVE] Este AP registró actividad desde {min_fecha} hasta {max_fecha}.")
+    # ----------------------------------
+
+    fecha_inicio = input("\nFecha inicio (AAAA-MM-DD): ")
+    fecha_fin = input("Fecha fin (AAAA-MM-DD): ")
 
     try:
-
-        fecha_inicio_dt = datetime.strptime(
-            fecha_inicio,
-            "%Y-%m-%d"
-        )
-
-        fecha_fin_dt = datetime.strptime(
-            fecha_fin,
-            "%Y-%m-%d"
-        )
-
+        fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+        fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d")
     except ValueError:
-
         print("Formato de fecha incorrecto.")
         return
 
-    filtrado = df_validos[
-        (df_validos["MAC_AP"] == mac_seleccionada)
-    ].copy()
-
-    filtrado["Inicio_de_Conexión_Dia"] = pd.to_datetime(
-        filtrado["Inicio_de_Conexión_Dia"]
-    )
-
-    filtrado = filtrado[
-        (
-            filtrado["Inicio_de_Conexión_Dia"]
-            >= fecha_inicio_dt
-        )
-        &
-        (
-            filtrado["Inicio_de_Conexión_Dia"]
-            <= fecha_fin_dt
-        )
+    # Aplicamos el filtro de fechas elegido por el usuario
+    filtrado_ap["Inicio_de_Conexión_Dia"] = fechas_reales
+    filtrado_final = filtrado_ap[
+        (filtrado_ap["Inicio_de_Conexión_Dia"] >= fecha_inicio_dt) &
+        (filtrado_ap["Inicio_de_Conexión_Dia"] <= fecha_fin_dt)
     ]
 
-    usuarios = sorted(
-        filtrado["Usuario"].unique()
-    )
+    usuarios = sorted(filtrado_final["MAC_Cliente"].unique())
 
     print("\n==============================")
     print("RESULTADO")
     print("==============================")
-
     print(f"\nMAC AP: {mac_seleccionada}")
-
-    print(
-        f"Periodo: {fecha_inicio} a {fecha_fin}"
-    )
-
-    print("\nUsuarios conectados:\n")
+    print(f"Periodo: {fecha_inicio} a {fecha_fin}")
+    print("\nMAC de Dispositivos conectados:\n")
 
     for usuario in usuarios:
         print(usuario)
 
-    print(
-        f"\nCantidad total de usuarios: "
-        f"{len(usuarios)}"
-    )
+    print(f"\nCantidad total de usuarios (dispositivos): {len(usuarios)}")
 
-    ultimo_resultado = pd.DataFrame(
-        {"Usuario": usuarios}
-    )
-
+    ultimo_resultado = pd.DataFrame({"MAC_Cliente": usuarios})
 
 def exportar_excel():
 
@@ -200,7 +184,7 @@ def exportar_excel():
 
     fila_total = pd.DataFrame(
         {
-            "Usuario": [f"TOTAL: {total}"]
+            "MAC_Cliente": [f"TOTAL: {total}"]
         }
     )
 
@@ -232,15 +216,18 @@ def mostrar_invalidos():
             "\nPrimeros 10 registros descartados:\n"
         )
 
+        # Para que no explote la consola al imprimir filas completas gigantes de pandas
         for fila in registros_invalidos[:10]:
-            print(fila)
+            print(f"Línea inválida -> MAC AP: {fila.get('MAC_AP', 'N/A')} | Fecha: {fila.get('Inicio_de_Conexión_Dia', 'N/A')}")
 
 
 # ==========================
 # MENÚ PRINCIPAL
 # ==========================
 
-while True:
+# CORRECCIÓN 3: Flujo limpio mediante evaluación de condición
+opcion = ""
+while opcion != "5":
 
     print("\n==============================")
     print("ANÁLISIS DE DISPOSITIVOS WIFI")
@@ -268,7 +255,6 @@ while True:
 
     elif opcion == "5":
         print("\nFin del programa.")
-        break
 
     else:
         print("\nOpción inválida.")
