@@ -23,7 +23,7 @@ patron_ip = re.compile(
     r'^(\d{1,3}\.){3}\d{1,3}$'
 )
 
-# CORRECCIÓN 1: Patrón MAC flexible que acepta formato estándar y sufijos (ej: :HCDD)
+# Patrón MAC flexible que acepta formato estándar y sufijos (ej: :HCDD)
 patron_mac = re.compile(
     r'^[0-9A-Fa-f]{2}(-[0-9A-Fa-f]{2}){5}(:[A-Za-z0-9]+)?$'
 )
@@ -153,21 +153,21 @@ def buscar_usuarios():
         (filtrado_ap["Inicio_de_Conexión_Dia"] <= fecha_fin_dt)
     ]
 
-    usuarios = sorted(filtrado_final["MAC_Cliente"].unique())
+    usuarios = sorted(filtrado_final["Usuario"].unique())
 
     print("\n==============================")
     print("RESULTADO")
     print("==============================")
     print(f"\nMAC AP: {mac_seleccionada}")
     print(f"Periodo: {fecha_inicio} a {fecha_fin}")
-    print("\nMAC de Dispositivos conectados:\n")
+    print("\nUsuarios conectados:\n")
 
     for usuario in usuarios:
         print(usuario)
 
     print(f"\nCantidad total de usuarios (dispositivos): {len(usuarios)}")
 
-    ultimo_resultado = pd.DataFrame({"MAC_Cliente": usuarios})
+    ultimo_resultado = pd.DataFrame({"Usuario": usuarios})
 
 def exportar_excel():
 
@@ -225,7 +225,7 @@ def mostrar_invalidos():
 # MENÚ PRINCIPAL
 # ==========================
 
-# CORRECCIÓN 3: Flujo limpio mediante evaluación de condición
+# Flujo limpio mediante evaluación de condición
 opcion = ""
 while opcion != "5":
 
