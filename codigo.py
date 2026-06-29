@@ -174,17 +174,15 @@ def exportar_excel():
     global ultimo_resultado
 
     if ultimo_resultado is None:
-
-        print(
-            "\nPrimero debe realizar una búsqueda."
-        )
+        print("\nPrimero debe realizar una búsqueda.")
         return
 
     total = len(ultimo_resultado)
 
+    # Corregido: Ahora se agrega a la columna 'Usuario' en lugar de 'MAC_Cliente'
     fila_total = pd.DataFrame(
         {
-            "MAC_Cliente": [f"TOTAL: {total}"]
+            "Usuario": [f"TOTAL: {total}"]
         }
     )
 
@@ -198,10 +196,7 @@ def exportar_excel():
         index=False
     )
 
-    print(
-        "\nArchivo resultado.xlsx generado correctamente."
-    )
-
+    print("\nArchivo resultado.xlsx generado correctamente.")
 
 def mostrar_invalidos():
 
@@ -220,6 +215,18 @@ def mostrar_invalidos():
         for fila in registros_invalidos[:10]:
             print(f"Línea inválida -> MAC AP: {fila.get('MAC_AP', 'N/A')} | Fecha: {fila.get('Inicio_de_Conexión_Dia', 'N/A')}")
 
+def exportar_invalidos_excel():
+
+    if len(registros_invalidos) == 0:
+        print("\nNo hay registros descartados para exportar.")
+        return
+        
+    # Convertimos la lista de descartados a un DataFrame y lo exportamos
+    df_invalidos = pd.DataFrame(registros_invalidos)
+    df_invalidos.to_excel("descartados.xlsx", index=False)
+    
+    print(f"\nArchivo descartados.xlsx generado correctamente con {len(df_invalidos)} registros.")
+
 
 # ==========================
 # MENÚ PRINCIPAL
@@ -227,7 +234,7 @@ def mostrar_invalidos():
 
 # Flujo limpio mediante evaluación de condición
 opcion = ""
-while opcion != "5":
+while opcion != "6":
 
     print("\n==============================")
     print("ANÁLISIS DE DISPOSITIVOS WIFI")
@@ -237,7 +244,8 @@ while opcion != "5":
     print("2. Buscar usuarios por MAC AP")
     print("3. Exportar resultado a Excel")
     print("4. Mostrar registros descartados")
-    print("5. Salir")
+    print("5. Exportar registros descartados a Excel")
+    print("6. Salir")
 
     opcion = input("\nSeleccione una opción: ")
 
@@ -252,8 +260,11 @@ while opcion != "5":
 
     elif opcion == "4":
         mostrar_invalidos()
-
+        
     elif opcion == "5":
+        exportar_invalidos_excel()
+
+    elif opcion == "6":
         print("\nFin del programa.")
 
     else:
