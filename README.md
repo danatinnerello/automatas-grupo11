@@ -6,7 +6,7 @@ El programa permite validar datos mediante expresiones regulares, filtrar usuari
 ## Integrantes
 
 - Abigail Palacios
-- Gabriela Vacca
+- Gabriela Vaca
 - Dana Tinnerello
 - Ignacio Quercetti
 - Santiago Stacchiola
