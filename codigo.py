@@ -2,9 +2,7 @@ import pandas as pd
 import re
 from datetime import datetime
 
-# ==========================
 # CARGA DEL ARCHIVO
-# ==========================
 
 print("Cargando archivo...")
 
@@ -13,9 +11,9 @@ df = pd.read_csv("automatas.csv", low_memory=False)
 # Eliminar columnas basura
 df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
 
-# ==========================
 # VALIDACIONES CON REGEX
-# ==========================
+
+#Validamos los campos de usuario, IP, fecha y MAC con expresiones regulares
 
 patron_usuario = re.compile(r'^[A-Za-z0-9_-]+$')
 
@@ -43,6 +41,8 @@ print("Validando registros...")
 
 for _, fila in df.iterrows():
 
+    # Extraemos los campos de texto a validar
+
     usuario = str(fila["Usuario"]).strip()
     ip = str(fila["IP_NAS_AP"]).strip()
     fecha = str(fila["Inicio_de_Conexión_Dia"]).strip()
@@ -54,6 +54,7 @@ for _, fila in df.iterrows():
     output_octects = str(fila["Output_Octects"]).strip()
     session_time = str(fila["Session_Time"]).strip()
 
+    #Asummimos que todos los campos son válidos hasta que se demuestre lo contrario
     valido = True
 
     if not patron_usuario.match(usuario):
@@ -78,6 +79,7 @@ for _, fila in df.iterrows():
     else:
         registros_invalidos.append(fila)
 
+# Agarramos nuestra caja de registros limpios y la volvemos a convertir en una tabla de Pandas para poder hacer cálculos y exportarla en el siguiente paso.
 df_validos = pd.DataFrame(registros_validos)
 
 print(f"\nRegistros válidos: {len(df_validos)}")
@@ -86,20 +88,20 @@ print(f"Registros inválidos: {len(registros_invalidos)}")
 # Variable para exportar después
 ultimo_resultado = None
 
-
-# ==========================
 # FUNCIONES
-# ==========================
 
 def mostrar_macs():
 
+#Ordenamos las MACs de los AP y las mostramos en pantalla
     macs = sorted(df_validos["MAC_AP"].unique())
 
     print("\n=== LISTA DE MAC AP ===\n")
 
+#Recorre la lista de MACs ordenadas y automáticamente les asigna un número
     for i, mac in enumerate(macs, start=1):
         print(f"{i}. {mac}")
 
+    #muestra cuantos AP hay en total
     print(f"\nTotal de AP: {len(macs)}")
 
 
@@ -107,10 +109,12 @@ def buscar_usuarios():
 
     global ultimo_resultado
 
+#Vuelve a armar la lista ordenada de MACs limpias.
     macs = sorted(df_validos["MAC_AP"].unique())
 
     print("\n=== MAC AP DISPONIBLES ===\n")
 
+#Vuelve a imprimir la lista de MACs ordenadas y numeradas para que el usuario pueda elegir una.
     for i, mac in enumerate(macs, start=1):
         print(f"{i}. {mac}")
 
@@ -127,18 +131,21 @@ def buscar_usuarios():
         print("Debe ingresar un número.")
         return
 
-    # Filtramos primero solo por la MAC para ver su historial
+# Agarramos nuestra tabla de registros válidos y filtramos solo las filas que corresponden al router que eligió el usuario.
     filtrado_ap = df_validos[(df_validos["MAC_AP"] == mac_seleccionada)].copy()
+#Acá convierte la columna de texto de las fechas a un formato especial de "tiempo" (datetime) para poder hacer cálculos matemáticos con ellas
     fechas_reales = pd.to_datetime(filtrado_ap["Inicio_de_Conexión_Dia"])
+#Busca la fecha mas vieja y la mas nueva de la columna de fechas y las convierte a un formato de texto legible para mostrarlas en pantalla.
     min_fecha = fechas_reales.min().strftime('%Y-%m-%d')
     max_fecha = fechas_reales.max().strftime('%Y-%m-%d')
 
     print(f"\n[DATO CLAVE] Este AP registró actividad desde {min_fecha} hasta {max_fecha}.")
-    # ----------------------------------
 
+#Pide la fecha de inicio y fin al usuario
     fecha_inicio = input("\nFecha inicio (AAAA-MM-DD): ")
     fecha_fin = input("Fecha fin (AAAA-MM-DD): ")
 
+#En caso de que el usuario ingrese un formato de fecha incorrecto, se le avisa y se sale de la función.
     try:
         fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
         fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d")
@@ -153,6 +160,7 @@ def buscar_usuarios():
         (filtrado_ap["Inicio_de_Conexión_Dia"] <= fecha_fin_dt)
     ]
 
+# Obtenemos la lista de usuarios únicos conectados al AP en el rango de fechas seleccionado y los ordenamos alfabéticamente.
     usuarios = sorted(filtrado_final["Usuario"].unique())
 
     print("\n==============================")
@@ -177,24 +185,16 @@ def exportar_excel():
         print("\nPrimero debe realizar una búsqueda.")
         return
 
+#cuantas filas (usuarios) tiene nuestra tabla de resultados guardada.
     total = len(ultimo_resultado)
 
-    # Corregido: Ahora se agrega a la columna 'Usuario' en lugar de 'MAC_Cliente'
-    fila_total = pd.DataFrame(
-        {
-            "Usuario": [f"TOTAL: {total}"]
-        }
-    )
+# creamos una tabla de una sola celda bajo el título exacto de la columna "Usuario". Adentro le ponemos el texto formateado
+    fila_total = pd.DataFrame({"Usuario": [f"TOTAL: {total}"]})
 
-    resultado = pd.concat(
-        [ultimo_resultado, fila_total],
-        ignore_index=True
-    )
+# Concatenamos la fila de total al final del DataFrame de resultados.
+    resultado = pd.concat([ultimo_resultado, fila_total],ignore_index=True)
 
-    resultado.to_excel(
-        "resultado.xlsx",
-        index=False
-    )
+    resultado.to_excel("resultado.xlsx",index=False)
 
     print("\nArchivo resultado.xlsx generado correctamente.")
 
@@ -221,16 +221,14 @@ def exportar_invalidos_excel():
         print("\nNo hay registros descartados para exportar.")
         return
         
-    # Convertimos la lista de descartados a un DataFrame y lo exportamos
+    # Convertimos la lista de descartados a una tabla de datos y lo exportamos
     df_invalidos = pd.DataFrame(registros_invalidos)
     df_invalidos.to_excel("descartados.xlsx", index=False)
     
     print(f"\nArchivo descartados.xlsx generado correctamente con {len(df_invalidos)} registros.")
 
 
-# ==========================
 # MENÚ PRINCIPAL
-# ==========================
 
 # Flujo limpio mediante evaluación de condición
 opcion = ""
