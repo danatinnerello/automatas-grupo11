@@ -1,12 +1,15 @@
 import pandas as pd
 import re
+import os
 from datetime import datetime
 
 # CARGA DEL ARCHIVO
 
 print("Cargando archivo...")
 
-df = pd.read_csv("automatas.csv", low_memory=False)
+# Buscamos el CSV siempre al lado del script, sin importar desde dónde se ejecute
+ruta_csv = os.path.join(os.path.dirname(os.path.abspath(__file__)), "automatas.csv")
+df = pd.read_csv(ruta_csv, low_memory=False)
 
 # Eliminar columnas basura
 df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
@@ -27,7 +30,7 @@ patron_mac = re.compile(
 )
 
 patron_fecha = re.compile(
-    r'^\d{4}-\d{2}-\d{2}$'
+    r'^(\d{4}[-/]\d{2}[-/]\d{2})|(\d{2}[-/]\d{2}[-/]\d{4})$'
 )
 
 patron_numero = re.compile(
@@ -133,24 +136,44 @@ def buscar_usuarios():
 
 # Agarramos nuestra tabla de registros válidos y filtramos solo las filas que corresponden al router que eligió el usuario.
     filtrado_ap = df_validos[(df_validos["MAC_AP"] == mac_seleccionada)].copy()
+    def parsear_fecha_columna(val):
+        if pd.isna(val):
+            return pd.NaT
+        val_str = str(val).replace("/", "-").strip()
+        try:
+            return datetime.strptime(val_str, "%Y-%m-%d")
+        except ValueError:
+            pass
+        try:
+            return datetime.strptime(val_str, "%d-%m-%Y")
+        except ValueError:
+            return pd.NaT
+
 #Acá convierte la columna de texto de las fechas a un formato especial de "tiempo" (datetime) para poder hacer cálculos matemáticos con ellas
-    fechas_reales = pd.to_datetime(filtrado_ap["Inicio_de_Conexión_Dia"])
+    fechas_reales = filtrado_ap["Inicio_de_Conexión_Dia"].apply(parsear_fecha_columna)
 #Busca la fecha mas vieja y la mas nueva de la columna de fechas y las convierte a un formato de texto legible para mostrarlas en pantalla.
-    min_fecha = fechas_reales.min().strftime('%Y-%m-%d')
-    max_fecha = fechas_reales.max().strftime('%Y-%m-%d')
+    min_fecha = fechas_reales.min().strftime('%d-%m-%Y')
+    max_fecha = fechas_reales.max().strftime('%d-%m-%Y')
 
     print(f"\n[DATO CLAVE] Este AP registró actividad desde {min_fecha} hasta {max_fecha}.")
 
 #Pide la fecha de inicio y fin al usuario
-    fecha_inicio = input("\nFecha inicio (AAAA-MM-DD): ")
-    fecha_fin = input("Fecha fin (AAAA-MM-DD): ")
+    fecha_inicio = input("\nFecha inicio (DD-MM-AAAA): ")
+    fecha_fin = input("Fecha fin (DD-MM-AAAA): ")
+
+    def parsear_fecha_usuario(fecha_str):
+        fecha_str = fecha_str.replace("/", "-").strip()
+        try:
+            return datetime.strptime(fecha_str, "%d-%m-%Y")
+        except ValueError:
+            return datetime.strptime(fecha_str, "%Y-%m-%d")
 
 #En caso de que el usuario ingrese un formato de fecha incorrecto, se le avisa y se sale de la función.
     try:
-        fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d")
-        fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d")
+        fecha_inicio_dt = parsear_fecha_usuario(fecha_inicio)
+        fecha_fin_dt = parsear_fecha_usuario(fecha_fin)
     except ValueError:
-        print("Formato de fecha incorrecto.")
+        print("Formato de fecha incorrecto. Use DD-MM-AAAA o AAAA-MM-DD.")
         return
 
     # Aplicamos el filtro de fechas elegido por el usuario
@@ -167,15 +190,29 @@ def buscar_usuarios():
     print("RESULTADO")
     print("==============================")
     print(f"\nMAC AP: {mac_seleccionada}")
-    print(f"Periodo: {fecha_inicio} a {fecha_fin}")
-    print("\nUsuarios conectados:\n")
+    print(f"Periodo: {fecha_inicio_dt.strftime('%d-%m-%Y')} a {fecha_fin_dt.strftime('%d-%m-%Y')}")
+    print(f"Cantidad de registros encontrados: {len(filtrado_final)}")
+    print(f"Cantidad de usuarios únicos: {len(usuarios)}")
 
+# Mostramos TODOS los registros completos con todas sus columnas
+    print("\n--- DETALLE COMPLETO DE REGISTROS ---\n")
+    for idx, (_, fila) in enumerate(filtrado_final.iterrows(), start=1):
+        print(f"Registro #{idx}")
+        for columna in filtrado_final.columns:
+            valor = fila[columna]
+            if columna == "Inicio_de_Conexión_Dia" and pd.notna(valor) and hasattr(valor, 'strftime'):
+                valor = valor.strftime('%d-%m-%Y')
+            print(f"  {columna}: {valor}")
+        print()
+
+    print("\nUsuarios conectados (únicos):\n")
     for usuario in usuarios:
         print(usuario)
 
     print(f"\nCantidad total de usuarios (dispositivos): {len(usuarios)}")
 
-    ultimo_resultado = pd.DataFrame({"Usuario": usuarios})
+    # Guardamos TODAS las columnas del resultado filtrado, no solo los usuarios únicos
+    ultimo_resultado = filtrado_final.copy()
 
 def exportar_excel():
 
@@ -185,16 +222,27 @@ def exportar_excel():
         print("\nPrimero debe realizar una búsqueda.")
         return
 
-#cuantas filas (usuarios) tiene nuestra tabla de resultados guardada.
+#cuantas filas (registros) tiene nuestra tabla de resultados guardada.
     total = len(ultimo_resultado)
 
-# creamos una tabla de una sola celda bajo el título exacto de la columna "Usuario". Adentro le ponemos el texto formateado
-    fila_total = pd.DataFrame({"Usuario": [f"TOTAL: {total}"]})
+# Armamos una fila resumen con el total de registros y la cantidad de usuarios únicos
+    usuarios_unicos = ultimo_resultado["Usuario"].nunique()
+    fila_total = pd.DataFrame({
+        "Usuario": [f"TOTAL REGISTROS: {total}"],
+        "IP_NAS_AP": [f"TOTAL USUARIOS ÚNICOS: {usuarios_unicos}"]
+    })
 
 # Concatenamos la fila de total al final del DataFrame de resultados.
-    resultado = pd.concat([ultimo_resultado, fila_total],ignore_index=True)
+    resultado = pd.concat([ultimo_resultado, fila_total], ignore_index=True)
 
-    resultado.to_excel("resultado.xlsx",index=False)
+    # Formateamos la columna de fecha a formato DD-MM-AAAA como texto para Excel
+    if "Inicio_de_Conexión_Dia" in resultado.columns:
+        resultado["Inicio_de_Conexión_Dia"] = resultado["Inicio_de_Conexión_Dia"].apply(
+            lambda x: x.strftime('%d-%m-%Y') if pd.notna(x) and hasattr(x, 'strftime') else x
+        )
+
+# Exportamos a Excel
+    resultado.to_excel("resultado.xlsx", index=False)
 
     print("\nArchivo resultado.xlsx generado correctamente.")
 
@@ -220,11 +268,11 @@ def exportar_invalidos_excel():
     if len(registros_invalidos) == 0:
         print("\nNo hay registros descartados para exportar.")
         return
-        
-    # Convertimos la lista de descartados a una tabla de datos y lo exportamos
+
+# Convertimos la lista de descartados a una tabla de datos y lo exportamos
     df_invalidos = pd.DataFrame(registros_invalidos)
     df_invalidos.to_excel("descartados.xlsx", index=False)
-    
+
     print(f"\nArchivo descartados.xlsx generado correctamente con {len(df_invalidos)} registros.")
 
 
