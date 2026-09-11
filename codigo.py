@@ -176,6 +176,10 @@ def buscar_usuarios():
         print("Formato de fecha incorrecto. Use DD-MM-AAAA o AAAA-MM-DD.")
         return
 
+    if fecha_inicio_dt > fecha_fin_dt:
+        print("\nError: La fecha de inicio no puede ser posterior a la fecha de fin.")
+        return
+
     # Aplicamos el filtro de fechas elegido por el usuario
     filtrado_ap["Inicio_de_Conexión_Dia"] = fechas_reales
     filtrado_final = filtrado_ap[
